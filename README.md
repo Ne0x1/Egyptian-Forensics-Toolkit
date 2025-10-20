@@ -44,8 +44,8 @@ This tool attempts to apply a **software write-block**. This is **NOT** a substi
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/YOUR_USERNAME/YOUR_REPOSITORY_NAME.git](https://github.com/YOUR_USERNAME/YOUR_REPOSITORY_NAME.git)
-    cd YOUR_REPOSITORY_NAME
+    git clone (https://github.com/Ne0x1/Egyptian-Forensics-Toolkit.git)
+    cd Egyptian-Forensics-Toolkit
     ```
 
 2.  **Install required Python packages:**
