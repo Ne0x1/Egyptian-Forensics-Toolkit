@@ -20,8 +20,12 @@ def main():
     parser.add_argument("-o", "--output-dir", default="./forensic_output", help="Directory to save all output files.")
     parser.add_argument("-e", "--examiner", default="N/A", help="Name of the examiner.")
     parser.add_argument("-c", "--case-number", default="N/A", help="Case number for documentation.")
+    
+    # ضفنا الخيار ده عشان نمرره لأداة ewfacquirestream
+    parser.add_argument("-ev", "--evidence-number", default="1", help="Evidence number for documentation.")
+
     parser.add_argument("--ewf", action="store_true", help="Convert the final RAW image to EWF (.E01) format.")
-    parser.add_argument("--split", type=int, default=0, help="For EWF only: Split size in MB (e.g., 2048 for 2GB). Default is no split.")
+    parser.add_argument("--split", type=int, default=0, help="For EWF only: Split size in MB (e.g., 2048 for 2GB). Default is 1.5GB if 0.")
     parser.add_argument("--compress", choices=['none', 'fast', 'best'], default='fast', help="For EWF only: Compression level.")
     parser.add_argument("--bitlocker", action="store_true", help="Attempt to decrypt the source image if it's BitLocker encrypted.")
 
@@ -40,8 +44,8 @@ def main():
     BAD_SECTOR_LOG = os.path.join(args.output_dir, "bad_sectors.log")
     
     print("=" * 60)
-    print("      FORENSIC IMAGING UTILITY V1.0 (EFF-Toolkit)")
-    print("      Dev BY : Abdelrahman ELsayed GITHUB :  @Ne0x1 ")
+    print("      FORENSIC IMAGING UTILITY V1.0.1 (EFF-Toolkit)")
+    print("      Dev BY : @Vbdelrvhmvnx_")
     print("=" * 60)
     print(f"[*] WARNING: This tool attempts to modify block device states ('ro').")
     print(f"[*] A HARDWARE WRITE-BLOCKER IS THE ONLY GUARANTEED METHOD.")
@@ -60,23 +64,20 @@ def main():
     if args.bitlocker:
         decrypted_path = decrypt_bitlocker(raw_image_path, args.output_dir, log_file)
         if decrypted_path:
-            # If decryption works, we hash the decrypted image for its own integrity check
             log_message(log_file, "Hashing decrypted image...")
             # ملحوظة: في سيناريو حقيقي، يجب إعادة حساب الهاش للملف المفكوك
-            # (هنا سنستخدم الهاش الأصلي للتبسيط في التقرير)
-            final_image_path = decrypted_path # The decrypted image is now the main evidence file.
+            final_image_path = decrypted_path 
         else:
             log_message(log_file, "BitLocker decryption failed. Continuing with encrypted image.")
 
     # Optional EWF Conversion
     if args.ewf:
-        # نحول الملف النهائي (سواء الأصلي أو المفكوك)
         ewf_image_path = convert_to_ewf(args, final_image_path, hashes)
         if ewf_image_path:
             final_image_path = ewf_image_path
             # Optional: Remove the large RAW file after successful EWF conversion
             # if final_image_path != raw_image_path:
-            #     os.remove(raw_image_path) # احذر عند استخدام هذا
+            #     os.remove(raw_image_path)
 
     # --- Reporting --- #
     generate_report(args, hashes, final_image_path, log_file)
