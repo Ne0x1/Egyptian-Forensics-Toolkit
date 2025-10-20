@@ -7,67 +7,70 @@ from datetime import datetime
 # --- استيراد الأدوات المساعدة ---
 from utils import log_message
 
-# --- Conditional Imports --- #
-try:
-    import pyewf
-except ImportError:
-    print("[!] Warning: pyewf not available. EWF (.E01) export will be disabled.")
-    pyewf = None
-
 # === POST-PROCESSING FUNCTIONS === #
 
 def convert_to_ewf(args, raw_path, hashes):
-    """Converts the raw image to EWF format with metadata."""
-    if not pyewf:
-        print("[!] pyewf not installed; skipping EWF conversion.")
-        return None
-    
+    """
+    Converts the raw image to EWF format using the 'ewfacquirestream' command-line tool.
+    This is more reliable than the Python bindings for writing metadata.
+    """
     ewf_path = os.path.join(args.output_dir, "image.E01")
     log_file = os.path.join(args.output_dir, "acquisition.log")
-    log_message(log_file, f"Starting EWF conversion to {ewf_path}")
+    log_message(log_file, f"Starting EWF conversion to {ewf_path} using 'ewfacquirestream'...")
 
+    # --- 1. جهز الأوامر ---
+    split_size_bytes = args.split * 1024 * 1024
+    
+    compression_map = {
+        'none': 'empty-block',
+        'fast': 'fast',
+        'best': 'bzip2'
+    }
+    compression_type = compression_map.get(args.compress, 'fast')
+
+    # استخدمنا args.evidence_number اللي ضفناه في main.py
+    command = [
+        "ewfacquirestream",
+        "-C", args.case_number,
+        "-E", args.evidence_number,
+        "-e", args.examiner,
+        "-N", f"Acquired from {args.source}",
+        "-c", compression_type,
+        "-S", str(split_size_bytes) if split_size_bytes > 0 else "0",
+        "-t", ewf_path
+    ]
+    
+    log_message(log_file, f"Executing command: {' '.join(command)}")
+
+    # --- 2. نفذ الأمر واعمل "Pipe" للملف ---
     try:
-        ewf_handle = pyewf.handle()
-        ewf_handle.set_header_value("case_number", args.case_number)
-        ewf_handle.set_header_value("examiner_name", args.examiner)
-        ewf_handle.set_header_value("evidence_number", "1")
-        ewf_handle.set_header_value("notes", f"Acquired from {args.source} on {datetime.now().isoformat()}")
-        
-        # Set compression and splitting
-        if args.compress != 'none':
-            compression_level = pyewf.compression_levels.FAST if args.compress == 'fast' else pyewf.compression_levels.BEST
-            ewf_handle.set_compression_level(compression_level)
-        
-        if args.split > 0:
-            ewf_handle.set_segment_file_size(args.split * 1024 * 1024)
-
-        ewf_handle.open_write(ewf_path)
-        ewf_handle.set_write_md5_hash(True) # Let pyewf calculate its own internal hash
-
         with open(raw_path, 'rb') as raw_file:
-            while True:
-                chunk = raw_file.read(1024 * 1024) # 1MB buffer
-                if not chunk:
-                    break
-                ewf_handle.write(chunk)
-                
-        ewf_handle.close()
-        log_message(log_file, "EWF conversion successful.")
-        
-        # Verify EWF hash if possible
-        ewf_md5 = ewf_handle.get_md5_hash()
-        log_message(log_file, f"EWF internal MD5: {ewf_md5}")
-        
-        # ملحوظة: هاش المصدر الأصلي قد يختلف لو كان هناك باد سيكتور وتم استبدالها بأصفار
-        # الهاش المحسوب هنا هو للملف الـ raw الذي تم إنشاؤه
-        if ewf_md5 != hashes['md5']:
-            log_message(log_file, "[!] WARNING: EWF internal MD5 does not match calculated source MD5.")
-            log_message(log_file, f"    Source MD5: {hashes['md5']}")
-            log_message(log_file, "    (This may be OK if bad sectors were encountered)")
+            process = subprocess.Popen(
+                command,
+                stdin=raw_file,     # الـ input هو الملف الـ raw
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            stdout, stderr = process.communicate()
 
-        return ewf_path
+            if process.returncode != 0:
+                log_message(log_file, f"[!] ewfacquirestream failed!")
+                log_message(log_file, f"    STDOUT: {stdout}")
+                log_message(log_file, f"    STDERR: {stderr}")
+                return None
+            
+            log_message(log_file, "EWF conversion successful.")
+            log_message(log_file, f"    {stderr.strip()}") # بنطبع الهاش اللي الأداة طلعته
+
+            return ewf_path
+
+    except FileNotFoundError:
+        log_message(log_file, "[!] Error: 'ewfacquirestream' command not found.")
+        log_message(log_file, "    Please install it using (Debian/Parrot): sudo apt install ewf-tools")
+        return None
     except Exception as e:
-        print(f"[!] EWF Conversion error: {e}")
         log_message(log_file, f"[!] EWF Conversion error: {e}")
         return None
 
